@@ -1,0 +1,147 @@
+================================================================================
+MULTI-DOCUMENT RAG SYSTEM - COMPREHENSIVE ARCHITECTURE & TECHNICAL SUMMARY
+================================================================================
+
+--------------------------------------------------------------------------------
+1. PROJECT PURPOSE & WHAT IT DOES
+--------------------------------------------------------------------------------
+Traditional Large Language Models (LLMs) suffer from two major limitations:
+1. Hallucinations: They invent plausible-sounding facts when they do not know the answer.
+2. Knowledge Cutoffs & Privacy: They cannot access your private, proprietary enterprise documents.
+
+This project solves both problems by implementing a production-grade Retrieval-Augmented 
+Generation (RAG) System. It allows users to upload raw enterprise documents (.pdf, .docx, .txt), 
+search them via vector mathematics, and receive grounded answers backed by exact document 
+and page-level citations, with zero hallucinations.
+
+Core Capabilities:
+- Multi-Format Ingestion: Parses PDFs, Word DOCX files, and text files.
+- Page-Aware Text Chunking: Slices documents into overlapping chunks while preserving 1-indexed page numbers.
+- Semantic Vector Embeddings: Transforms text into dense 1024-dimensional normalized vectors.
+- Geometric Search: Performs fast Cosine Similarity nearest-neighbor search with confidence threshold gating.
+- Multi-Turn Conversational Memory: Tracks chat sessions in SQLite and resolves follow-up pronouns (e.g. "they", "that").
+- Anti-Hallucination Guardrails: Bypasses LLM generation if confidence threshold is not met (graceful failure).
+- Programmatic Citations: Delivers verifiable citations with source document name and page number.
+
+--------------------------------------------------------------------------------
+2. DUAL-PIPELINE ARCHITECTURE
+--------------------------------------------------------------------------------
+The system is divided into two decoupled pipelines supported by a dual-database architecture:
+
+[INGESTION PIPELINE (Asynchronous)]
+  Raw Files (PDF/DOCX) 
+    ──> Text & Page Extractor (pypdf / python-docx)
+    ──> Sliding-Window Chunker (1000 chars, 200 overlap + metadata)
+    ──> Vector Embedder (1024-d L2 normalized vectors)
+    ──> Vector Store (upsert vectors + payload) & Relational DB (log documents)
+
+[QUERY PIPELINE (Synchronous)]
+  User Question + Session ID
+    ──> Multi-Turn Query Contextualizer (resolves pronouns via chat history)
+    ──> Query Embedder (maps question to identical vector space)
+    ──> Cosine Similarity Search (cos(θ) = u · v against Vector Store)
+    ──> Confidence Threshold Gating (score >= 0.10)
+        ├─ If Below Threshold: Deterministic Graceful Failure (No LLM call)
+        └─ If Above Threshold:
+            ──> Prompt Builder (rigid anti-hallucination system prompt)
+            ──> Prior Conversation History Injection (from SQLite)
+            ──> Groq LLM Generation (llama-3.3-70b-versatile, temp=0.0)
+            ──> Programmatic Citations Extractor & DB State Persistence
+            ──> Final Client JSON Payload { answer, citations, session_id }
+
+--------------------------------------------------------------------------------
+3. HOW EACH CORE FUNCTIONALITY IS IMPLEMENTED
+--------------------------------------------------------------------------------
+
+A. Multi-Format Parsing with Page Number Preservation (src/services/document.py)
+   - PDF: Uses `pypdf.PdfReader` iterating through `reader.pages`, extracting text 
+     while maintaining a strict 1-indexed `page_number` attached to each page.
+   - DOCX: Uses `python-docx` iterating through paragraphs and tables, grouping 
+     text into logical blocks/sections.
+   - Output: Standardized list of `ExtractedPage` objects with document metadata.
+
+B. Sliding-Window Text Chunking (src/services/chunking.py)
+   - Splits extracted text into configurable segments (default: 1000 characters).
+   - Employs a 200-character sliding overlap between consecutive chunks so that 
+     sentences or clauses are never severed across chunk boundaries.
+   - Every single chunk retains: { document_id, filename, page_number, chunk_index, text }.
+
+C. Dense Semantic Vector Embeddings (src/services/embedding.py)
+   - Generates 1024-dimensional dense semantic feature vectors.
+   - Applies morphological stemming (normalizing word suffixes), unigram/bigram 
+     token hashing, character 3-gram subwords, and stopword down-weighting.
+   - Applies L2 vector normalization (v / ||v||) so that dot products directly 
+     compute Cosine Similarity.
+   - Embeds identical representations for both ingestion chunks and query questions.
+
+D. Vector Store & Semantic Retrieval (src/database/vector_store.py)
+   - Stores dense vectors alongside raw text and metadata payloads.
+   - Calculates Cosine Similarity: cos(θ) = (q / ||q||) · (v / ||v||).
+   - Implements confidence threshold gating (0.10) to discard low-confidence noise.
+   - Persists vector records to disk (vector_store.json) for zero-latency startups.
+
+E. Relational Database & Session State (src/database/relational.py)
+   - Uses SQLite to maintain 3 relational tables: `documents`, `sessions`, and `messages`.
+   - Fetches recent conversational turns using `ORDER BY created_at ASC LIMIT 5`.
+   - Enables multi-session isolation and persistent chat history across server reboots.
+
+F. Multi-Turn Pronoun Resolution & Conversational History (src/core/rag.py)
+   - When a user asks a follow-up ("Does that apply to them?"), the query contextualizer 
+     combines the question with keywords from prior user turns in the active session.
+   - Injects the prior dialogue turns directly into the LLM prompt block so the model 
+     naturally understands the subject of discussion.
+
+G. Strict Grounded Prompting & Anti-Hallucination Guardrails (src/services/llm.py)
+   - Rigid System Instruction: Forces the LLM to answer using ONLY provided context chunks.
+   - Zero-Temperature Generation (temperature=0.0): Enforces deterministic, factual output.
+   - Graceful Failure: If vector search returns 0 chunks above threshold, the LLM is bypassed 
+     entirely, immediately returning: "I could not find an answer in the provided documents."
+
+H. Programmatic Citation Delivery (src/services/llm.py & src/api/routes.py)
+   - Assembles and returns structured citation objects:
+     [ { "document_name": "contractor_guidelines.docx", "page_number": 1 } ]
+   - Allows client applications and UIs to render direct clickable source badges.
+
+--------------------------------------------------------------------------------
+4. HOW EACH TECHNOLOGY USED IN THIS PROJECT HELPS
+--------------------------------------------------------------------------------
+
+1. Python 3.10+ (Language Core)
+   - Provides native support for data manipulation, mathematical operations, 
+     asynchronous concurrency, and seamless AI/LLM SDK integrations.
+
+2. FastAPI & Uvicorn (Web Framework & ASGI Server)
+   - High-performance, asynchronous REST API framework.
+   - Automatically validates request/response payloads via Pydantic schemas.
+   - Generates interactive OpenAPI (Swagger) documentation at `/docs`.
+
+3. Groq Cloud SDK & Llama 3.3 70B (LLM Engine)
+   - Ultra-low inference latency using Groq's custom LPU hardware.
+   - `llama-3.3-70b-versatile` provides high-tier reasoning to extract and summarize 
+     facts from context while following strict formatting rules.
+
+4. SQLite 3 (Relational Database)
+   - Zero-configuration, file-based relational storage (`rag_history.db`).
+   - ACID-compliant storage for sequential chat turns, foreign-key relationships, 
+     and document tracking without needing a separate database server.
+
+5. NumPy (Vector Mathematics)
+   - High-performance linear algebra library in C/Fortran.
+   - Executes fast vector dot products, Euclidean L2 norms, and array slicing.
+
+6. PyPDF & python-docx (Document Ingestion Parsers)
+   - `pypdf`: Extracts raw text from binary PDF structures while tracking page indices.
+   - `python-docx`: Parses Word `.docx` XML packages to extract text, paragraphs, and tables.
+
+7. Pydantic (Data Validation & Schemas)
+   - Enforces strict type safety for API requests (`ChatRequest`) and responses (`ChatResponse`).
+
+8. Pytest (Automated Test Suite)
+   - Comprehensive automated test runner verifying all 9 unit, integration, and API test cases.
+
+9. Vanilla HTML5 / CSS3 / JavaScript (Interactive Web UI)
+   - Glassmorphic, modern dark-themed frontend with zero bulky external npm dependencies.
+   - Provides drag-and-drop file upload, real-time citation chips, session management, 
+     and quick-test scenario pills.
+
+================================================================================
