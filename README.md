@@ -276,8 +276,3 @@ curl -X GET "http://localhost:8000/api/documents"
 ├── requirements.txt
 └── README.md
 ```
-
----
-
-## 🛡️ License
-MIT License. Built for enterprise-grade trustworthy AI applications.
