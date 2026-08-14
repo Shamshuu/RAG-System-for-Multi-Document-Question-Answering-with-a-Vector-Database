@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Document RAG Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <h2>DocuMind RAG</h2>
+                    <span class="badge">Multi-Doc QA</span>
+                </div>
+            </div>
+
+            <!-- Upload Section -->
+            <div class="section-card upload-section">
+                <div class="section-header">
+                    <h3>Ingest Documents</h3>
+                    <span class="file-types">PDF, DOCX, TXT</span>
+                </div>
+                <div class="drop-zone" id="dropZone">
+                    <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt" hidden>
+                    <div class="upload-prompt" id="uploadPrompt">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                        </svg>
+                        <p><strong>Click or Drag files</strong> here to chunk & embed</p>
+                    </div>
+                    <div class="upload-progress" id="uploadProgress" style="display: none;">
+                        <div class="spinner"></div>
+                        <span id="uploadStatusText">Vectorizing document...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ingested Documents List -->
+            <div class="section-card doc-list-section">
+                <div class="section-header">
+                    <h3>Indexed Documents (<span id="docCount">0</span>)</h3>
+                    <button class="btn-icon-small" id="refreshDocsBtn" title="Refresh list">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="doc-list" id="docList">
+                    <div class="empty-hint">No documents indexed yet. Upload a file above to begin.</div>
+                </div>
+            </div>
+
+            <!-- Session Controls -->
+            <div class="sidebar-footer">
+                <button class="btn-new-chat" id="newChatBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    New Chat Session
+                </button>
+                <div class="system-stats">
+                    <span>Engine: <strong>Groq + VectorDB</strong></span>
+                    <span id="sessionDisplay">Session: <em>Active</em></span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-main">
+            <!-- Header -->
+            <header class="chat-header">
+                <div class="header-info">
+                    <h1>Document Intelligence Studio</h1>
+                    <p>Ground answers with semantic vector retrieval & verifiable source citations</p>
+                </div>
+                <div class="header-tags">
+                    <span class="tag tag-vector">
+                        <span class="status-dot"></span> Cosine Top-5
+                    </span>
+                    <span class="tag tag-grounded">Anti-Hallucination Active</span>
+                </div>
+            </header>
+
+            <!-- Pre-flight Quick Prompts -->
+            <div class="quick-scenarios" id="quickScenarios">
+                <span class="scenario-label">Quick Scenarios:</span>
+                <button class="scenario-pill" data-query="How many days of paid time off (PTO) do full-time employees get?">
+                    📋 Check PTO Policy
+                </button>
+                <button class="scenario-pill" data-query="Does that apply to contractors or temporary workers?">
+                    🔄 Test Pronoun Follow-up
+                </button>
+                <button class="scenario-pill" data-query="What is the capital city of France and its population?">
+                    🛡️ Test Graceful Failure
+                </button>
+            </div>
+
+            <!-- Messages Container -->
+            <div class="messages-container" id="messagesContainer">
+                <!-- Welcome Card -->
+                <div class="message assistant-message welcome-card">
+                    <div class="avatar">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 16v-4M12 8h.01"></path>
+                        </svg>
+                    </div>
+                    <div class="message-body">
+                        <h3>Welcome to the Multi-Document RAG System</h3>
+                        <p>This system performs semantic search over your uploaded PDFs and DOCX files. It enforces <strong>zero-hallucination rules</strong> and appends exact document & page citations.</p>
+                        <div class="features-grid">
+                            <div class="feat-item">
+                                <strong>1. Ingest:</strong> Upload PDF/DOCX. Pages are chunked with sliding overlap.
+                            </div>
+                            <div class="feat-item">
+                                <strong>2. Retrieve:</strong> Vector store computes Cosine distance with confidence threshold gating.
+                            </div>
+                            <div class="feat-item">
+                                <strong>3. Synthesize:</strong> Groq LLM generates answers strictly grounded in context.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Form -->
+            <div class="input-container">
+                <form id="chatForm" class="chat-form">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="queryInput" 
+                            placeholder="Ask a question about your uploaded documents..." 
+                            rows="1"
+                            required
+                        ></textarea>
+                        <button type="submit" id="sendBtn" class="btn-send" title="Send question">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
