@@ -1,0 +1,123 @@
+================================================================================
+MULTI-DOCUMENT RAG SYSTEM - COMPLETE STEP-BY-STEP RUN & TEST INSTRUCTIONS
+================================================================================
+
+--------------------------------------------------------------------------------
+1. PREREQUISITES & ENVIRONMENT SETUP
+--------------------------------------------------------------------------------
+- Python 3.10 or higher installed (e.g. Python 3.14)
+- Terminal (PowerShell / Command Prompt / Bash)
+
+Navigate to the project root:
+  cd c:\GPP\Week30\RAG-System-for-Multi-Document-Question-Answering-with-a-Vector-Database
+
+--------------------------------------------------------------------------------
+2. INSTALL DEPENDENCIES
+--------------------------------------------------------------------------------
+Install all required libraries (FastAPI, Uvicorn, PyPDF, python-docx, Groq, Pydantic, NumPy, python-dotenv, pytest):
+  py -m pip install -r requirements.txt
+
+--------------------------------------------------------------------------------
+3. CONFIGURE ENVIRONMENT (.env)
+--------------------------------------------------------------------------------
+1. Copy the example template to create your .env file:
+   PowerShell:
+     Copy-Item .env.example .env
+   Bash / Linux / Mac:
+     cp .env.example .env
+
+2. Open .env and set your Groq API Key and settings:
+   PORT=8000
+   HOST=0.0.0.0
+   GROQ_API_KEY=gsk_your_groq_api_key_here
+   GROQ_MODEL=llama-3.3-70b-versatile
+   EMBEDDING_PROVIDER=local
+   SIMILARITY_THRESHOLD=0.10
+   TOP_K=5
+   DATABASE_PATH=./rag_history.db
+
+--------------------------------------------------------------------------------
+4. RUN THE AUTOMATED TEST SUITE
+--------------------------------------------------------------------------------
+Run pytest to verify that all 9 unit and integration tests pass:
+  py -m pytest tests/ -v
+
+Expected output:
+  tests/test_api.py::test_health_endpoint PASSED
+  tests/test_api.py::test_upload_and_chat_api_pipeline PASSED
+  tests/test_chunking.py::test_chunking_preserves_page_numbers PASSED
+  tests/test_chunking.py::test_sliding_window_overlap PASSED
+  tests/test_rag.py::test_full_rag_lifecycle PASSED
+  tests/test_relational.py::test_document_lifecycle PASSED
+  tests/test_relational.py::test_session_and_message_history PASSED
+  tests/test_vector_store.py::test_embedding_and_vector_search PASSED
+  tests/test_vector_store.py::test_threshold_filtering PASSED
+  ======================== 9 passed in 2.62s =========================
+
+--------------------------------------------------------------------------------
+5. START THE APPLICATION SERVER
+--------------------------------------------------------------------------------
+Start the FastAPI server:
+  py -m src.main
+
+The server will be live at:
+  - Interactive Web Interface: http://localhost:8000
+  - Swagger API Documentation: http://localhost:8000/docs
+
+--------------------------------------------------------------------------------
+6. STEP-BY-STEP FUNCTIONAL WALKTHROUGH (VIA WEB UI)
+--------------------------------------------------------------------------------
+Open http://localhost:8000 in your web browser:
+
+1. INGEST DOCUMENTS:
+   - In the left sidebar ("Ingest Documents"), click or drag & drop:
+     samples/contractor_guidelines.docx (or any PDF document)
+   - The document is parsed with page/block tracking, sliced into 1000-character
+     chunks with 200-character overlap, embedded into 1024-d vectors, and registered
+     in both SQLite and the Vector Store.
+   - The file appears under "Indexed Documents".
+
+2. SUMMARY / OVERVIEW TEST:
+   - In the chat box, type:
+     "Summarize the guidelines" or "What is this file about?"
+   - The system synthesizes an accurate summary with citations:
+     [contractor_guidelines.docx, Page 1]
+
+3. FACTUAL QUERY & CITATION TEST:
+   - Type:
+     "What are the billing and invoicing terms for contractors?"
+   - Expected Output:
+     Contractors must submit invoices by the 5th business day of each month (Net 30).
+   - A clickable citation chip appears below the response bubble:
+     [contractor_guidelines.docx • Page 1]
+
+4. MULTI-TURN PRONOUN RESOLUTION TEST:
+   - In the same chat session, ask:
+     "Does that apply to PTO or benefits?"
+   - The system retrieves conversation history from SQLite, resolves "that" and "they",
+     and explains that contractors are excluded from PTO and corporate benefits.
+
+5. ANTI-HALLUCINATION & GRACEFUL FAILURE TEST:
+   - Ask an out-of-scope question:
+     "What is the capital city of France?"
+   - The vector similarity falls below the confidence threshold (0.10).
+   - The LLM is bypassed to prevent hallucination, returning exactly:
+     "I could not find an answer in the provided documents."
+   - Citations array is empty [].
+
+6. MULTI-SESSION ISOLATION:
+   - Click "+ New Chat Session" to clear conversational context and start fresh.
+
+--------------------------------------------------------------------------------
+7. TERMINAL / cURL TESTING EXAMPLES (OPTIONAL)
+--------------------------------------------------------------------------------
+1. Upload a Document:
+   curl -X POST "http://localhost:8000/api/upload" -F "files=@samples/contractor_guidelines.docx"
+
+2. Query the Chat Endpoint:
+   curl -X POST "http://localhost:8000/api/chat" -H "Content-Type: application/json" -d "{\"query\": \"What are the payment terms for contractors?\"}"
+
+3. List Ingested Documents:
+   curl -X GET "http://localhost:8000/api/documents"
+
+================================================================================
